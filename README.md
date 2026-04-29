@@ -119,7 +119,7 @@ These were intentional tradeoffs to prioritize reliability, simplicity, and spee
 
 Submission Links
 GitHub Repository: https://github.com/wildtigress/mumzworld-ai-support-agent
-Loom Walkthrough: [https://www.loom.com/share/629843dc62584200a24c822b6bbbf855]
+Loom Walkthrough: [Watch Demo] (https://www.loom.com/share/629843dc62584200a24c822b6bbbf855)
 License
 
 This project is licensed under the MIT License.
