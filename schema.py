@@ -1,10 +1,14 @@
 from pydantic import BaseModel
+from typing import Dict
+
+
+class Reply(BaseModel):
+    en: str
+    ar: str
+
 
 class OutputSchema(BaseModel):
     intent: str
-    urgency: str
-    confidence: float
-    language: str
     reasoning: str
-    reply: dict
+    reply: Reply
     requires_human: bool

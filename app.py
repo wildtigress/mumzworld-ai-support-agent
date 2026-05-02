@@ -5,22 +5,21 @@ import json
 import os
 
 
-# ✅ Safe language detection
+# ---------------------------
+# Language Detection
+# ---------------------------
 def safe_detect(text):
     from langdetect import detect, LangDetectException
-
     try:
         return detect(text)
     except LangDetectException:
         return "unknown"
 
 
-# ✅ Check if text contains Arabic characters
 def is_arabic(text):
     return any('\u0600' <= c <= '\u06FF' for c in text)
 
 
-# ✅ Ensure Arabic reply is always present
 def ensure_arabic(reply_dict):
     en = reply_dict.get("en", "").strip()
     ar = reply_dict.get("ar", "").strip()
@@ -34,11 +33,43 @@ def ensure_arabic(reply_dict):
     return reply_dict
 
 
-# ✅ Call Groq model
-def call_model(prompt):
+# ---------------------------
+# Confidence (ENGINEERED)
+# ---------------------------
+def compute_confidence(context, requires_human):
+    if context == "NO_RELEVANT_CONTEXT":
+        return 0.3
+    if requires_human:
+        return 0.4
+    return 0.85
+
+
+# ---------------------------
+# Intent Normalization
+# ---------------------------
+def normalize_intent(intent: str):
+    intent = intent.lower()
+
+    if "return" in intent:
+        return "return"
+    if "refund" in intent:
+        return "refund"
+
+    return "unknown"
+
+
+# ---------------------------
+# Model Call
+# ---------------------------
+def call_model(prompt, lang):
     from groq import Groq
 
     client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+
+    if lang == "ar":
+        system_lang = "Respond ONLY in fluent Arabic."
+    else:
+        system_lang = "Respond ONLY in fluent English."
 
     response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
@@ -51,7 +82,8 @@ def call_model(prompt):
                     "Always include BOTH English and Arabic replies.\n"
                     "Never leave fields empty.\n"
                     "If unsure, set requires_human=true.\n"
-                    "No text outside JSON."
+                    "No text outside JSON.\n"
+                    + system_lang
                 )
             },
             {
@@ -65,7 +97,9 @@ def call_model(prompt):
     return response.choices[0].message.content
 
 
-# ✅ Extract JSON safely
+# ---------------------------
+# JSON Extraction
+# ---------------------------
 def extract_json(text):
     try:
         start = text.find("{")
@@ -75,7 +109,9 @@ def extract_json(text):
         return text
 
 
-# ✅ Validate output
+# ---------------------------
+# Validation
+# ---------------------------
 def validate_output(raw):
     try:
         cleaned = extract_json(raw)
@@ -87,46 +123,82 @@ def validate_output(raw):
         return None
 
 
-# ✅ Main pipeline
+# ---------------------------
+# PIPELINE
+# ---------------------------
 def pipeline(message):
-    # Handle invalid input
+
+    # Input validation
     if not message.strip() or len(message) < 5:
         return {
-            "error": "Input too short or invalid",
-            "requires_human": True
+            "intent": "unknown",
+            "reasoning": "Invalid input",
+            "reply": {
+                "en": "Please provide a valid message.",
+                "ar": "يرجى إدخال رسالة صحيحة."
+            },
+            "requires_human": True,
+            "confidence": 0.3
         }
 
-    # Language detection
+    # Detect language
     lang = safe_detect(message)
 
     # Retrieve context
     context = retrieve_context(message)
 
+    # 🔥 HARD FAIL IF NO CONTEXT
+    if context == "NO_RELEVANT_CONTEXT":
+        return {
+            "intent": "unknown",
+            "reasoning": "No relevant policy found",
+            "reply": {
+                "en": "I'm not sure about this. Let me connect you to a human agent.",
+                "ar": "لست متأكدًا من هذا. سأقوم بتحويلك إلى موظف دعم."
+            },
+            "requires_human": True,
+            "confidence": 0.3
+        }
+
     # Build prompt
     prompt = build_prompt(message, context)
 
     # Call model
-    raw = call_model(prompt)
+    raw = call_model(prompt, lang)
 
     # Validate response
     validated = validate_output(raw)
 
+    # 🔥 FIXED FALLBACK (correct placement)
     if not validated:
         return {
-            "error": "Invalid output from model",
-            "raw": raw,
-            "requires_human": True
+            "intent": "unknown",
+            "reasoning": "Model output invalid",
+            "reply": {
+                "en": "Let me connect you to a human agent.",
+                "ar": "سأقوم بتحويلك إلى موظف دعم."
+            },
+            "requires_human": True,
+            "confidence": 0.3
         }
 
     result = validated.model_dump()
 
-    # Ensure Arabic response
+    # 🔥 Normalize intent
+    result["intent"] = normalize_intent(result["intent"])
+
+    # Ensure Arabic correctness
     result["reply"] = ensure_arabic(result["reply"])
+
+    # 🔥 Add real confidence
+    result["confidence"] = compute_confidence(context, result["requires_human"])
 
     return result
 
 
-# ✅ CLI runner
+# ---------------------------
+# CLI RUNNER
+# ---------------------------
 if __name__ == "__main__":
     while True:
         message = input("\nEnter customer message: ")

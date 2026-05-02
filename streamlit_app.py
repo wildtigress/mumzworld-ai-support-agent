@@ -1,40 +1,74 @@
 import streamlit as st
 from app import pipeline
-import json
 
-st.set_page_config(page_title="AI Support Agent", layout="centered")
+st.set_page_config(page_title="Mumzworld AI Support", layout="centered")
 
+# ---------------------------
+# Header
+# ---------------------------
 st.title("🤖 Mumzworld AI Support Assistant")
 st.write("Multilingual (English + Arabic) customer support triage system")
 
-# Input box
-user_input = st.text_area("Enter customer message:")
+# ---------------------------
+# Input
+# ---------------------------
+user_input = st.text_area("Enter customer message:", height=120)
 
+# ---------------------------
+# Action
+# ---------------------------
 if st.button("Analyze"):
+
     if not user_input.strip():
         st.warning("Please enter a message.")
     else:
         with st.spinner("Processing..."):
             result = pipeline(user_input)
 
-        st.subheader("📊 Result")
+        st.divider()
+        st.subheader("📊 Structured Output")
 
-        # Pretty JSON display
+        # Always show raw JSON (important for credibility)
         st.json(result)
 
-        # Highlight key fields
-        if "intent" in result:
-            st.success(f"Intent: {result['intent']}")
-            st.info(f"Urgency: {result['urgency']}")
-            st.write(f"Confidence: {result['confidence']}")
+        # ---------------------------
+        # Error / fallback handling
+        # ---------------------------
+        if "reply" not in result:
+            st.error("⚠️ System could not process the request properly.")
+            st.write(result)
+            st.stop()
 
-            st.subheader("💬 Response")
-
-            st.markdown("**English:**")
-            st.write(result["reply"]["en"])
-
-            st.markdown("**Arabic:**")
-            st.write(result["reply"]["ar"])
+        # ---------------------------
+        # Status (AI vs Human)
+        # ---------------------------
+        st.subheader("📌 Status")
 
         if result.get("requires_human"):
-            st.error("⚠️ Requires human attention")
+            st.error("⚠️ Escalated to Human Agent")
+        else:
+            st.success("✅ Handled by AI")
+
+        # ---------------------------
+        # Analysis
+        # ---------------------------
+        st.subheader("🧠 Analysis")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.metric("Intent", result.get("intent", "N/A"))
+
+        with col2:
+            st.metric("Confidence", result.get("confidence", "N/A"))
+
+        # ---------------------------
+        # Responses
+        # ---------------------------
+        st.subheader("💬 Response")
+
+        st.markdown("### 🇬🇧 English")
+        st.write(result["reply"].get("en", ""))
+
+        st.markdown("### 🇸🇦 Arabic")
+        st.write(result["reply"].get("ar", ""))
